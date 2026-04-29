@@ -1,78 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RALLY - Gestión de la Demanda</title>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+    *, *::before, *::after {
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Inter', 'Arial', sans-serif;
+      margin: 0;
+      padding: 40px 20px;
+      background: linear-gradient(135deg, #f0f4ff 0%, #fafafa 60%, #fff5f5 100%);
+      min-height: 100vh;
+      color: #2d2d2d;
+    }
+
+    .container {
+      max-width: 960px;
+      margin: 0 auto;
+      background: #ffffff;
+      border-radius: 20px;
+      box-shadow: 0 8px 40px rgba(0, 0, 0, 0.08), 0 2px 8px rgba(0,0,0,0.04);
+      overflow: hidden;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      padding: 36px 40px 32px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    h1 {
+      color: #fff;
+      margin: 0;
+      font-size: 2.2rem;
+    }
+
+    h1 span {
+      color: #ef4444;
+      font-style: italic;
+    }
+
+    .header-subtitle {
+      color: rgba(255,255,255,0.55);
+      font-size: 0.9rem;
+      margin-top: 6px;
+    }
+
+    .body-content {
+      padding: 36px 40px;
+    }
+
+    .upload-zone {
+      border: 2px dashed #e2e8f0;
+      border-radius: 14px;
+      padding: 32px 24px;
+      text-align: center;
+      background: #f8fafc;
+      transition: 0.2s;
+      cursor: pointer;
+      position: relative;
+    }
+
+    .upload-zone:hover {
+      border-color: #ef4444;
+      background: #fff5f5;
+    }
+
+    .upload-icon {
+      font-size: 2rem;
+      margin-bottom: 10px;
+      display: block;
+    }
+
+    input[type="file"] {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      opacity: 0;
+      cursor: pointer;
+    }
+
+    /* 🆕 FILE STATUS */
+    .file-status {
+      margin-top: 12px;
+      font-size: 0.9rem;
+      font-weight: 500;
+      padding: 10px 14px;
+      border-radius: 10px;
+      display: none;
+    }
+
+    .file-status.success {
+      display: block;
+      background: #ecfdf5;
+      color: #065f46;
+      border: 1px solid #a7f3d0;
+    }
+
+    .file-status.info {
+      display: block;
+      background: #eff6ff;
+      color: #1d4ed8;
+      border: 1px solid #bfdbfe;
+    }
+
+    .buttons {
+      display: flex;
+      gap: 12px;
+      margin-top: 24px;
+      flex-wrap: wrap;
+    }
+
+    .buttons button {
+      padding: 12px 28px;
+      font-weight: 600;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      flex: 1;
+      min-width: 160px;
+    }
+
+    .buttons button#processFile {
+      background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+      color: white;
+    }
+
+    .buttons button#downloadExcel {
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      color: white;
+    }
+
+    .message {
+      margin-top: 18px;
+      font-size: 0.92rem;
+      font-weight: 500;
+      padding: 12px 18px;
+      border-radius: 10px;
+      display: none;
+    }
+
+    .message.error {
+      display: block;
+      background: #fef2f2;
+      color: #b91c1c;
+      border: 1px solid #fecaca;
+    }
+
+    .message.success {
+      display: block;
+      background: #ecfdf5;
+      color: #065f46;
+      border: 1px solid #a7f3d0;
+    }
+
+    .divider {
+      height: 1px;
+      background: #f1f5f9;
+      margin: 32px 0;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    thead th {
+      background: #1a1a2e;
+      color: white;
+      padding: 12px;
+      text-align: left;
+    }
+
+    tbody td {
+      padding: 10px;
+      border-bottom: 1px solid #eee;
+    }
+  </style>
+</head>
+
+<body>
+<div class="container">
+
+  <div class="header">
+    <h1><span>RALLY</span> — Gestión de la Demanda</h1>
+    <p class="header-subtitle">Procesador de demanda · Agile Planning</p>
+  </div>
+
+  <div class="body-content">
+
+    <!-- UPLOAD -->
+    <div class="upload-zone">
+      <span class="upload-icon">📂</span>
+      Arrastra o selecciona archivo CSV
+      <input type="file" id="csvFile" accept=".csv">
+    </div>
+
+    <!-- 🆕 STATUS -->
+    <div id="fileStatus" class="file-status"></div>
+
+    <div class="buttons">
+      <button id="processFile">Procesar archivo</button>
+      <button id="downloadExcel" disabled>Descargar Excel</button>
+    </div>
+
+    <div id="message" class="message"></div>
+
+    <div class="divider"></div>
+
+    <table id="previewTable">
+      <thead>
+      <tr>
+        <th>ID</th>
+        <th>Nombre</th>
+        <th>Tipo</th>
+        <th>Value Stream</th>
+        <th>Estado</th>
+      </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+
+  </div>
+</div>
+
 <script>
-    document.addEventListener('DOMContentLoaded', () => {
-      const fileInput = document.getElementById('csvFile');
-      const fileStatus = document.getElementById('fileStatus');
-  
-      const valueStreamCategories = [
-        { category: "otros servicios", keywords: [] },
-        { category: "empresas", keywords: ["empresa", "business"] },
-        { category: "prestamos e hipotecas", keywords: ["préstamo", "hipoteca", "loan", "mortgage"] },
-        { category: "onboarding", keywords: ["onboarding"] },
-        { category: "seguros", keywords: ["seguro", "insurance"] },
-        { category: "cuentas y tarjetas", keywords: ["cuenta", "tarjeta", "account", "card"] },
-        { category: "ahorro e inversiones", keywords: ["ahorro", "inversión", "saving", "investment"] },
-        { category: "plataforma transversal", keywords: ["plataforma", "platform"] },
-        { category: "pagos transaccionales", keywords: ["pago", "transacción", "payment", "transaction"] }
-      ];
-  
-      function classifyValueStream(tags, name) {
-        const allKeywords = tags.split(";").concat(name.split(" "));
-        for (const { category, keywords } of valueStreamCategories) {
-          if (keywords.some(k => allKeywords.some(w => w.toLowerCase().includes(k)))) {
-            return category;
-          }
-        }
-        return "otros servicios";
+  const fileInput = document.getElementById('csvFile');
+  const fileStatus = document.getElementById('fileStatus');
+
+  const valueStreamCategories = [
+    { category: "otros servicios", keywords: [] },
+    { category: "empresas", keywords: ["empresa", "business"] },
+    { category: "prestamos e hipotecas", keywords: ["préstamo", "hipoteca", "loan", "mortgage"] },
+    { category: "onboarding", keywords: ["onboarding"] },
+    { category: "seguros", keywords: ["seguro", "insurance"] },
+    { category: "cuentas y tarjetas", keywords: ["cuenta", "tarjeta", "account", "card"] },
+    { category: "ahorro e inversiones", keywords: ["ahorro", "inversión", "saving", "investment"] },
+    { category: "plataforma transversal", keywords: ["plataforma", "platform"] },
+    { category: "pagos transaccionales", keywords: ["pago", "transacción", "payment", "transaction"] }
+  ];
+
+  function classifyValueStream(tags, name) {
+    const allKeywords = tags.split(";").concat(name.split(" "));
+    for (const { category, keywords } of valueStreamCategories) {
+      if (keywords.some(k => allKeywords.some(w => w.toLowerCase().includes(k)))) {
+        return category;
       }
-  
-      /* 🆕 FILE SELECTED FEEDBACK */
-      fileInput.addEventListener('change', (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-  
-        fileStatus.textContent = `Archivo recibido: ${file.name} ✔ listo para procesar`;
-        fileStatus.className = 'file-status success';
-  
-        document.querySelector('.upload-zone').style.borderColor = '#10b981';
-        document.querySelector('.upload-zone').style.background = '#ecfdf5';
-      });
-  
-      document.getElementById('processFile').addEventListener('click', () => {
-        const file = fileInput.files[0];
-        const message = document.getElementById('message');
-        const tbody = document.querySelector('#previewTable tbody');
-  
-        tbody.innerHTML = '';
-        message.textContent = '';
-  
-        if (!file) {
-          message.textContent = 'Selecciona un archivo primero';
-          message.className = 'message error';
-          return;
-        }
-  
-        Papa.parse(file, {
-          header: true,
-          skipEmptyLines: true,
-          complete: (results) => {
-            results.data.forEach(row => {
-              const tr = document.createElement('tr');
-              tr.innerHTML = `
-                <td>${row['Formatted ID'] || ''}</td>
-                <td>${row['Name'] || ''}</td>
-                <td>${row['Type'] || ''}</td>
-                <td>${classifyValueStream(row['Tags'] || '', row['Name'] || '')}</td>
-                <td>${row['Flow State'] || ''}</td>
-              `;
-              tbody.appendChild(tr);
-            });
-  
-            message.textContent = 'Archivo procesado correctamente';
-            message.className = 'message success';
-  
-            document.getElementById('downloadExcel').disabled = false;
-          }
+    }
+    return "otros servicios";
+  }
+
+  /* 🆕 FILE SELECTED FEEDBACK */
+  fileInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    fileStatus.textContent = `Archivo recibido: ${file.name} ✔ listo para procesar`;
+    fileStatus.className = 'file-status success';
+
+    document.querySelector('.upload-zone').style.borderColor = '#10b981';
+    document.querySelector('.upload-zone').style.background = '#ecfdf5';
+  });
+
+  document.getElementById('processFile').addEventListener('click', () => {
+    const file = fileInput.files[0];
+    const message = document.getElementById('message');
+    const tbody = document.querySelector('#previewTable tbody');
+
+    tbody.innerHTML = '';
+    message.textContent = '';
+
+    if (!file) {
+      message.textContent = 'Selecciona un archivo primero';
+      message.className = 'message error';
+      return;
+    }
+
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: (results) => {
+        results.data.forEach(row => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>${row['Formatted ID'] || ''}</td>
+            <td>${row['Name'] || ''}</td>
+            <td>${row['Type'] || ''}</td>
+            <td>${classifyValueStream(row['Tags'] || '', row['Name'] || '')}</td>
+            <td>${row['Flow State'] || ''}</td>
+          `;
+          tbody.appendChild(tr);
         });
-      });
+
+        message.textContent = 'Archivo procesado correctamente';
+        message.className = 'message success';
+
+        document.getElementById('downloadExcel').disabled = false;
+      }
     });
-  </script>
+  });
+</script>
+
+</body>
+</html>
