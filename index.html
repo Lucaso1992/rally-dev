@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Procesar CSV de Rally</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+    }
+    h1 {
+      text-align: center;
+    }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+    table, th, td {
+      border: 1px solid #ccc;
+    }
+    th, td {
+      padding: 8px;
+      text-align: left;
+    }
+    th {
+      background-color: #f4f4f4;
+    }
+    .buttons {
+      margin-top: 20px;
+      text-align: center;
+    }
+    .buttons button {
+      padding: 10px 20px;
+      margin: 5px;
+      cursor: pointer;
+    }
+    .message {
+      margin-top: 20px;
+      text-align: center;
+      color: green;
+    }
+    .error {
+      color: red;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Procesar CSV de Rally</h1>
+    <input type="file" id="csvFile" accept=".csv">
+    <div class="buttons">
+      <button id="processFile">Procesar archivo</button>
+      <button id="downloadExcel" disabled>Descargar Excel</button>
+    </div>
+    <div id="previewContainer">
+      <h2>Vista previa de los datos procesados</h2>
+      <table id="previewTable">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Nombre</th>
+            <th>Tipo</th>
+            <th>Value Stream</th>
+            <th>Estado</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div id="message" class="message"></div>
+  </div>
+
+  <script>
+    const valueStreamCategories = [
+      { category: "otros servicios", keywords: [] },
+      { category: "empresas", keywords: ["empresa", "business"] },
+      { category: "prestamos e hipotecas", keywords: ["préstamo", "hipoteca", "loan", "mortgage"] },
+      { category: "onboarding", keywords: ["onboarding"] },
+      { category: "seguros", keywords: ["seguro", "insurance"] },
+      { category: "cuentas y tarjetas", keywords: ["cuenta", "tarjeta", "account", "card"] },
+      { category: "ahorro e inversiones", keywords: ["ahorro", "inversión", "saving", "investment"] },
+      { category: "plataforma transversal", keywords: ["plataforma", "platform"] },
+      { category: "pagos transaccionales", keywords: ["pago", "transacción", "payment", "transaction"] }
+    ];
+
+    function classifyValueStream(tags, name) {
+      const allKeywords = tags.split(";").concat(name.split(" "));
+      for (const { category, keywords } of valueStreamCategories) {
+        if (keywords.some(keyword => allKeywords.some(word => word.toLowerCase().includes(keyword)))) {
+          return category;
+        }
+      }
+      return "otros servicios";
+    }
+
+    document.getElementById('processFile').addEventListener('click', () => {
+      const fileInput = document.getElementById('csvFile');
+      const file = fileInput.files[0];
+      const message = document.getElementById('message');
+      const previewTableBody = document.querySelector('#previewTable tbody');
+      previewTableBody.innerHTML = ''; // Clear previous preview
+      message.textContent = '';
+
+      if (!file) {
+        message.textContent = 'Por favor, selecciona un archivo CSV.';
+        message.className = 'message error';
+        return;
+      }
+
+      Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        complete: function(results) {
+          const data = results.data;
+          const processedData = [];
+          const typeCounts = { US: 0, DE: 0, TS: 0 };
+          const valueStreamCounts = {};
+          const stateCounts = {};
+
+          data.forEach(row => {
+            const id = row['Formatted ID'] || '';
+            const name = row['Name'] || 'N/A';
+            const tags = row['Tags'] || 'N/A';
+            const flowState = row['Flow State'] || 'N/A';
+
+            const type = id.slice(0, 2);
+            if (!['US', 'DE', 'TS'].includes(type) || flowState === "Accepted") return;
+
+            const valueStream = classifyValueStream(tags, name);
+
+            processedData.push({
+              ID: id,
+              Nombre: name,
+              Tipo: type,
+              ValueStream: valueStream,
+              Estado: flowState
+            });
+
+            // Update counts
+            typeCounts[type] = (typeCounts[type] || 0) + 1;
+            valueStreamCounts[valueStream] = (valueStreamCounts[valueStream] || 0) + 1;
+            stateCounts[flowState] = (stateCounts[flowState] || 0) + 1;
+          });
+
+          // Populate preview table
+          processedData.forEach(row => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+              <td>${row.ID}</td>
+              <td>${row.Nombre}</td>
+              <td>${row.Tipo}</td>
+              <td>${row.ValueStream}</td>
+              <td>${row.Estado}</td>
+            `;
+            previewTableBody.appendChild(tr);
+          });
+
+          // Enable download button
+          document.getElementById('downloadExcel').disabled = false;
+
+          // Add event listener for Excel download
+          document.getElementById('downloadExcel').onclick = () => {
+            const workbook = XLSX.utils.book_new();
+
+            // Sheet 1: Datos Limpios
+            const cleanDataSheet = XLSX.utils.json_to_sheet(processedData);
+            XLSX.utils.book_append_sheet(workbook, cleanDataSheet, 'Datos Limpios');
+
+            // Sheet 2: Resumen
+            const summaryData = [
+              { Categoria: 'Tipo', ...typeCounts },
+              ...Object.keys(valueStreamCounts).map(stream => ({
+                Categoria: `Value Stream: ${stream}`,
+                Conteo: valueStreamCounts[stream]
+              })),
+              ...Object.keys(stateCounts).map(state => ({
+                Categoria: `Estado: ${state}`,
+                Conteo: stateCounts[state]
+              }))
+            ];
+            const summarySheet = XLSX.utils.json_to_sheet(summaryData);
+            XLSX.utils.book_append_sheet(workbook, summarySheet, 'Resumen');
+
+            // Download Excel file
+            XLSX.writeFile(workbook, 'Datos_Procesados.xlsx');
+            message.textContent = 'Archivo Excel generado con éxito.';
+            message.className = 'message';
+          };
+        },
+        error: function() {
+          message.textContent = 'Error al procesar el archivo CSV.';
+          message.className = 'message error';
+        }
+      });
+    });
+  </script>
+</body>
+</html>
