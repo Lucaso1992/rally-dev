@@ -23,7 +23,7 @@
     }
 
     .container {
-      max-width: 960px;
+      width: auto;
       margin: 0 auto;
       background: #ffffff;
       border-radius: 20px;
@@ -107,6 +107,12 @@
       background: #fff5f5;
     }
 
+    .upload-zone.file-loaded {
+      border-color: #10b981;
+      border-style: solid;
+      background: #f0fdf4;
+    }
+
     .upload-icon {
       font-size: 2rem;
       margin-bottom: 10px;
@@ -122,6 +128,46 @@
 
     .upload-label strong {
       color: #ef4444;
+    }
+
+    .file-loaded-info {
+      display: none;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 10px;
+      padding: 8px 16px;
+      background: #dcfce7;
+      border-radius: 8px;
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: #065f46;
+    }
+
+    .file-loaded-info.visible {
+      display: flex;
+    }
+
+    .file-loaded-info .check-icon {
+      width: 18px;
+      height: 18px;
+      background: #10b981;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .file-loaded-info .check-icon::after {
+      content: '';
+      display: block;
+      width: 5px;
+      height: 9px;
+      border: 2px solid #fff;
+      border-top: none;
+      border-left: none;
+      transform: rotate(45deg) translateY(-1px);
     }
 
     input[type="file"] {
@@ -303,10 +349,14 @@
     </div>
 
     <div class="body-content">
-      <div class="upload-zone">
+      <div class="upload-zone" id="uploadZone">
         <span class="upload-icon">📂</span>
-        <span class="upload-label">Arrastra un archivo CSV aquí o <strong>haz clic para seleccionar</strong></span>
+        <span class="upload-label">Arrastra un archivo CSV aquí o <strong>haz clic para seleccionar!</strong></span>
         <input type="file" id="csvFile" accept=".csv">
+        <div class="file-loaded-info" id="fileLoadedInfo">
+          <div class="check-icon"></div>
+          <span id="fileLoadedName">archivo.csv cargado correctamente</span>
+        </div>
       </div>
 
       <div class="buttons">
@@ -339,6 +389,12 @@
   </div>
 
   <script>
+    // ── Estado global para los datos procesados ──────────────────────────────
+    let processedData = [];
+    let typeCounts = {};
+    let valueStreamCounts = {};
+    let stateCounts = {};
+
     const valueStreamCategories = [
       { category: "otros servicios", keywords: [] },
       { category: "empresas", keywords: ["empresa", "business"] },
@@ -368,30 +424,56 @@
       return 'badge badge-default';
     }
 
+    function showMessage(text, type) {
+      const message = document.getElementById('message');
+      message.textContent = text;
+      message.className = 'message ' + type;
+    }
+
+    // ── Notificación al seleccionar archivo ───────────────────────────────────
+    document.getElementById('csvFile').addEventListener('change', function () {
+      const file = this.files[0];
+      const uploadZone = document.getElementById('uploadZone');
+      const fileLoadedInfo = document.getElementById('fileLoadedInfo');
+      const fileLoadedName = document.getElementById('fileLoadedName');
+
+      if (file) {
+        uploadZone.classList.add('file-loaded');
+        fileLoadedInfo.classList.add('visible');
+        fileLoadedName.textContent = '"' + file.name + '" cargado correctamente';
+      } else {
+        uploadZone.classList.remove('file-loaded');
+        fileLoadedInfo.classList.remove('visible');
+      }
+    });
+
+    // ── Procesar CSV ──────────────────────────────────────────────────────────
     document.getElementById('processFile').addEventListener('click', () => {
       const fileInput = document.getElementById('csvFile');
       const file = fileInput.files[0];
-      const message = document.getElementById('message');
       const previewTableBody = document.querySelector('#previewTable tbody');
       previewTableBody.innerHTML = '';
-      message.textContent = '';
-      message.className = 'message';
+
+      const messageEl = document.getElementById('message');
+      messageEl.textContent = '';
+      messageEl.className = 'message';
 
       if (!file) {
-        message.textContent = 'Por favor, selecciona un archivo CSV.';
-        message.className = 'message error';
+        showMessage('Por favor, selecciona un archivo CSV.', 'error');
         return;
       }
+
+      // Resetear estado global
+      processedData = [];
+      typeCounts = { US: 0, DE: 0, TS: 0 };
+      valueStreamCounts = {};
+      stateCounts = {};
 
       Papa.parse(file, {
         header: true,
         skipEmptyLines: true,
         complete: function(results) {
           const data = results.data;
-          const processedData = [];
-          const typeCounts = { US: 0, DE: 0, TS: 0 };
-          const valueStreamCounts = {};
-          const stateCounts = {};
 
           data.forEach(row => {
             const id = row['Formatted ID'] || '';
@@ -419,48 +501,56 @@
 
           processedData.forEach(row => {
             const tr = document.createElement('tr');
-            tr.innerHTML = `
-              <td>${row.ID}</td>
-              <td>${row.Nombre}</td>
-              <td><span class="${getBadgeClass(row.Tipo)}">${row.Tipo}</span></td>
-              <td>${row.ValueStream}</td>
-              <td>${row.Estado}</td>
-            `;
+            tr.innerHTML =
+              '<td>' + row.ID + '</td>' +
+              '<td>' + row.Nombre + '</td>' +
+              '<td><span class="' + getBadgeClass(row.Tipo) + '">' + row.Tipo + '</span></td>' +
+              '<td>' + row.ValueStream + '</td>' +
+              '<td>' + row.Estado + '</td>';
             previewTableBody.appendChild(tr);
           });
 
           document.getElementById('downloadExcel').disabled = false;
-
-          document.getElementById('downloadExcel').onclick = () => {
-            const workbook = XLSX.utils.book_new();
-
-            const cleanDataSheet = XLSX.utils.json_to_sheet(processedData);
-            XLSX.utils.book_append_sheet(workbook, cleanDataSheet, 'Datos Limpios');
-
-            const summaryData = [
-              { Categoria: 'Tipo', ...typeCounts },
-              ...Object.keys(valueStreamCounts).map(stream => ({
-                Categoria: `Value Stream: ${stream}`,
-                Conteo: valueStreamCounts[stream]
-              })),
-              ...Object.keys(stateCounts).map(state => ({
-                Categoria: `Estado: ${state}`,
-                Conteo: stateCounts[state]
-              }))
-            ];
-            const summarySheet = XLSX.utils.json_to_sheet(summaryData);
-            XLSX.utils.book_append_sheet(workbook, summarySheet, 'Resumen');
-
-            XLSX.writeFile(workbook, 'Datos_Procesados.xlsx');
-            message.textContent = 'Archivo Excel generado con éxito.';
-            message.className = 'message success';
-          };
+          showMessage('Archivo procesado con éxito. ' + processedData.length + ' registros encontrados.', 'success');
         },
         error: function() {
-          message.textContent = 'Error al procesar el archivo CSV.';
-          message.className = 'message error';
+          showMessage('Error al procesar el archivo CSV.', 'error');
         }
       });
+    });
+
+    // ── Descargar Excel — listener fijo, usa estado global ────────────────────
+    document.getElementById('downloadExcel').addEventListener('click', () => {
+      if (!processedData.length) return;
+
+      try {
+        const workbook = XLSX.utils.book_new();
+
+        const cleanDataSheet = XLSX.utils.json_to_sheet(processedData);
+        XLSX.utils.book_append_sheet(workbook, cleanDataSheet, 'Datos Limpios');
+
+        const summaryData = [
+          { Categoria: 'Tipo US', Conteo: typeCounts.US || 0 },
+          { Categoria: 'Tipo DE', Conteo: typeCounts.DE || 0 },
+          { Categoria: 'Tipo TS', Conteo: typeCounts.TS || 0 },
+          ...Object.keys(valueStreamCounts).map(stream => ({
+            Categoria: 'Value Stream: ' + stream,
+            Conteo: valueStreamCounts[stream]
+          })),
+          ...Object.keys(stateCounts).map(state => ({
+            Categoria: 'Estado: ' + state,
+            Conteo: stateCounts[state]
+          }))
+        ];
+
+        const summarySheet = XLSX.utils.json_to_sheet(summaryData);
+        XLSX.utils.book_append_sheet(workbook, summarySheet, 'Resumen');
+
+        XLSX.writeFile(workbook, 'Datos_Procesados.xlsx');
+        showMessage('Archivo Excel generado con éxito.', 'success');
+      } catch (err) {
+        showMessage('Error al generar el Excel: ' + err.message, 'error');
+      }
     });
   </script>
 </body>
